@@ -29,7 +29,7 @@ YEAR = date.today().strftime("%Y")
 
 
 # Check the location of the configuration file, default to the home directory
-filename = "atbswp.cfg"
+filename = "recorder.cfg"
 if platform.system() == "Linux":
     config_location = os.path.join(os.environ.get("HOME"), ".config")
 elif platform.system() == "Windows":
@@ -59,4 +59,5 @@ except:
         "Language": "en",
         "Recording Timer": 0,
         "Mouse Speed": 21,
+        "Window Title": 'Heroes of the Storm',
     }

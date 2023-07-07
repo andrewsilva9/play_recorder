@@ -164,22 +164,12 @@ class MainDialog(wx.Dialog, wx.MiniFrame):
         self.remaining_plays = wx.StaticText(self, label=settings.CONFIG.get("DEFAULT", "Repeat Count"),
                                              style=wx.ALIGN_CENTRE_HORIZONTAL)
         self.play_button.SetToolTip(self.app_text[3])
-        self.compile_button = wx.BitmapButton(self,
-                                              wx.ID_ANY,
-                                              wx.Bitmap(os.path.join(self.path, "img", "download.png"),
-                                                        wx.BITMAP_TYPE_ANY))
-        self.compile_button.SetToolTip(self.app_text[4])
+
         self.settings_button = wx.BitmapButton(self,
                                                wx.ID_ANY,
                                                wx.Bitmap(os.path.join(self.path, "img", "cog.png"),
                                                          wx.BITMAP_TYPE_ANY))
         self.settings_button.SetToolTip(self.app_text[5])
-
-        self.help_button = wx.BitmapButton(self,
-                                           wx.ID_ANY,
-                                           wx.Bitmap(os.path.join(self.path, "img", "question-circle.png"),
-                                                     wx.BITMAP_TYPE_ANY))
-        self.help_button.SetToolTip(self.app_text[6])
 
         self.__add_bindings()
         self.__set_properties()
@@ -213,13 +203,6 @@ class MainDialog(wx.Dialog, wx.MiniFrame):
         # Handle the event returned after a playback has completed
         self.Bind(self.pbc.EVT_THREAD_END, self.on_thread_end)
 
-        # compile_button_ctrl
-        self.Bind(wx.EVT_BUTTON, control.CompileCtrl.compile,
-                  self.compile_button)
-
-        # help_button_ctrl
-        self.Bind(wx.EVT_BUTTON, control.HelpCtrl.action, self.help_button)
-
         # settings_button_ctrl
         self.Bind(wx.EVT_BUTTON, self.on_settings_click, self.settings_button)
         self.sc = control.SettingsCtrl(self)
@@ -236,9 +219,7 @@ class MainDialog(wx.Dialog, wx.MiniFrame):
         self.save_button.SetSize(self.save_button.GetBestSize())
         self.record_button.SetSize(self.record_button.GetBestSize())
         self.play_button.SetSize(self.play_button.GetBestSize())
-        self.compile_button.SetSize(self.compile_button.GetBestSize())
         self.settings_button.SetSize(self.settings_button.GetBestSize())
-        self.help_button.SetSize(self.help_button.GetBestSize())
 
     def __do_layout(self):
         self.remaining_plays.Position = (256, 0)
@@ -250,9 +231,7 @@ class MainDialog(wx.Dialog, wx.MiniFrame):
         main_sizer.Add(self.save_button, 0, 0, 0)
         main_sizer.Add(self.record_button, 0, 0, 0)
         main_sizer.Add(self.play_button, 0, 0, 0)
-        main_sizer.Add(self.compile_button, 0, 0, 0)
         main_sizer.Add(self.settings_button, 0, 0, 0)
-        main_sizer.Add(self.help_button, 0, 0, 0)
         self.SetSizer(main_sizer)
         self.Centre()
         main_sizer.Fit(self)
@@ -262,10 +241,7 @@ class MainDialog(wx.Dialog, wx.MiniFrame):
         """ Create manually the event when the correct key is pressed."""
         keycode = event.GetKeyCode()
 
-        if keycode == wx.WXK_F1:
-            control.HelpCtrl.action(wx.PyCommandEvent(wx.wxEVT_BUTTON))
-
-        elif keycode == settings.CONFIG.getint('DEFAULT', 'Recording Hotkey'):
+        if keycode == settings.CONFIG.getint('DEFAULT', 'Recording Hotkey'):
             btn_event = wx.CommandEvent(wx.wxEVT_TOGGLEBUTTON)
             btn_event.EventObject = self.record_button
             if not self.record_button.Value:
@@ -329,12 +305,8 @@ class MainDialog(wx.Dialog, wx.MiniFrame):
     def on_about(self, event):
         """About dialog."""
         info = wx.adv.AboutDialogInfo()
-        info.Name = "atbswp"
         info.Version = f"{settings.VERSION}"
-        info.Copyright = (f"©{settings.YEAR} Paul Mairo <github@rmpr.xyz>\n")
-        info.Description = "Record mouse and keyboard actions and reproduce them identically at will"
-        info.WebSite = ("https://github.com/atbswp", "Project homepage")
-        info.Developers = ["Paul Mairo"]
+        info.Description = "Record mouse and keyboard actions"
         info.License = "GNU General Public License V3"
         info.Icon = self.icon
         wx.adv.AboutBox(info)

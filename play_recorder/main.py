@@ -23,18 +23,19 @@ import gui
 
 import wx
 
-
-class Atbswp(wx.App):
+class RecordingApp(wx.App):
     """Main class of the program."""
 
     def OnInit(self):
         """Initialize the main Window."""
-        self.main = gui.MainDialog(None, wx.ID_ANY, "atbswp")
+        self.main = gui.MainDialog(None, wx.ID_ANY, "Recorder")
         self.SetTopWindow(self.main)
         self.main.Show()
         return True
 
 
 if __name__ == "__main__":
-    app = Atbswp(0)
+    app = RecordingApp(0)
     app.MainLoop()
+
+

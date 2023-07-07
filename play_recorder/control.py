@@ -1,8 +1,8 @@
 """Control actions triggered by the GUI."""
 
-# atbswp: Record mouse and keyboard actions and reproduce them identically at will
 #
 # Copyright (C) 2019 Paul Mairo <github@rmpr.xyz>
+# Modified by Andrew Silva
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,17 +17,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import os
-import py_compile
 import shutil
 import sys
 import tempfile
 import time
-from datetime import date
 from pathlib import Path
 from threading import Event
 from threading import Thread
-
+from datetime import date
 import pyautogui
+import win32gui
 
 from pynput import keyboard, mouse
 
@@ -39,20 +38,38 @@ import wx
 import wx.adv
 import wx.lib.newevent as NE
 
-
 TMP_PATH = os.path.join(tempfile.gettempdir(),
-                        "atbswp-" + date.today().strftime("%Y%m%d"))
+                        "recorder-" + date.today().strftime("%Y%m%d"))
+TMP_IMG_PATH = os.path.join(tempfile.gettempdir(),
+                            "recorder-screenshots" + date.today().strftime("%Y%m%d"))
+# HEADER = (
+#     f"#!/bin/env python3\n"
+#     f"# Created by atbswp v{settings.VERSION} "
+#     f"(https://git.sr.ht/~rmpr/atbswp)\n"
+#     f"# on {date.today().strftime('%d %b %Y ')}\n"
+#     f"import pyautogui\n"
+#     f"import time\n"
+#     f"pyautogui.FAILSAFE = False\n"
+# )
 HEADER = (
-    f"#!/bin/env python3\n"
-    f"# Created by atbswp v{settings.VERSION} "
-    f"(https://git.sr.ht/~rmpr/atbswp)\n"
-    f"# on {date.today().strftime('%d %b %Y ')}\n"
-    f"import pyautogui\n"
-    f"import time\n"
-    f"pyautogui.FAILSAFE = False\n"
+    f"Recorded on {date.today()}"
 )
 
-LOOKUP_SPECIAL_KEY = {}
+LOOKUP_SPECIAL_KEY = {keyboard.Key.alt: 'alt', keyboard.Key.alt_l: 'altleft', keyboard.Key.alt_r: 'altright',
+                      keyboard.Key.alt_gr: 'altright', keyboard.Key.backspace: 'backspace',
+                      keyboard.Key.caps_lock: 'capslock', keyboard.Key.cmd: 'winleft', keyboard.Key.cmd_r: 'winright',
+                      keyboard.Key.ctrl: 'ctrlleft', keyboard.Key.ctrl_r: 'ctrlright', keyboard.Key.delete: 'delete',
+                      keyboard.Key.down: 'down', keyboard.Key.end: 'end', keyboard.Key.enter: 'enter',
+                      keyboard.Key.esc: 'esc', keyboard.Key.f1: 'f1', keyboard.Key.f2: 'f2', keyboard.Key.f3: 'f3',
+                      keyboard.Key.f4: 'f4', keyboard.Key.f5: 'f5', keyboard.Key.f6: 'f6', keyboard.Key.f7: 'f7',
+                      keyboard.Key.f8: 'f8', keyboard.Key.f9: 'f9', keyboard.Key.f10: 'f10', keyboard.Key.f11: 'f11',
+                      keyboard.Key.f12: 'f12', keyboard.Key.home: 'home', keyboard.Key.left: 'left',
+                      keyboard.Key.page_down: 'pagedown', keyboard.Key.page_up: 'pageup', keyboard.Key.right: 'right',
+                      keyboard.Key.shift_l: 'shiftleft', keyboard.Key.shift_r: 'shiftright',
+                      keyboard.Key.space: 'space',
+                      keyboard.Key.tab: 'tab', keyboard.Key.up: 'up', keyboard.Key.media_play_pause: 'playpause',
+                      keyboard.Key.insert: 'insert', keyboard.Key.num_lock: 'num_lock', keyboard.Key.pause: 'pause',
+                      keyboard.Key.print_screen: 'print_screen', keyboard.Key.scroll_lock: 'scroll_lock'}
 
 
 class FileChooserCtrl:
@@ -100,7 +117,7 @@ class FileChooserCtrl:
                            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as fileDialog:
 
             if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return     # the user changed their mind
+                return  # the user changed their mind
 
             # save the current contents in the file
             pathname = fileDialog.GetPath()
@@ -121,58 +138,37 @@ class RecordCtrl:
     def __init__(self):
         """Initialize a new record."""
         self._header = HEADER
-        self._error = "### This key is not supported yet"
+        self._error = "INVALID INPUT"
 
         self._capture = [self._header]
+        self._images = []
         self._lastx, self._lasty = pyautogui.position()
         if getattr(sys, 'frozen', False):
             self.path = sys._MEIPASS
         else:
             self.path = Path(__file__).parent.absolute()
+        self.bounds = (0, 0, 100, 100)
+        self.window_title = ''
 
-        LOOKUP_SPECIAL_KEY[keyboard.Key.alt] = 'alt'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.alt_l] = 'altleft'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.alt_r] = 'altright'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.alt_gr] = 'altright'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.backspace] = 'backspace'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.caps_lock] = 'capslock'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.cmd] = 'winleft'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.cmd_r] = 'winright'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.ctrl] = 'ctrlleft'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.ctrl_r] = 'ctrlright'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.delete] = 'delete'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.down] = 'down'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.end] = 'end'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.enter] = 'enter'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.esc] = 'esc'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.f1] = 'f1'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.f2] = 'f2'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.f3] = 'f3'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.f4] = 'f4'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.f5] = 'f5'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.f6] = 'f6'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.f7] = 'f7'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.f8] = 'f8'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.f9] = 'f9'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.f10] = 'f10'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.f11] = 'f11'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.f12] = 'f12'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.home] = 'home'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.left] = 'left'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.page_down] = 'pagedown'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.page_up] = 'pageup'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.right] = 'right'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.shift] = 'shift_left'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.shift_r] = 'shiftright'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.space] = 'space'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.tab] = 'tab'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.up] = 'up'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.media_play_pause] = 'playpause'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.insert] = 'insert'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.num_lock] = 'num_lock'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.pause] = 'pause'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.print_screen] = 'print_screen'
-        LOOKUP_SPECIAL_KEY[keyboard.Key.scroll_lock] = 'scroll_lock'
+    def screenshot(self, window_title=None, recompute_bounds=False):
+        if not recompute_bounds:
+            return pyautogui.screenshot(region=self.bounds)
+
+        if window_title:
+            hwnd = win32gui.FindWindow(None, window_title)
+            if hwnd:
+                win32gui.SetForegroundWindow(hwnd)
+                x, y, x1, y1 = win32gui.GetClientRect(hwnd)
+                x, y = win32gui.ClientToScreen(hwnd, (x, y))
+                x1, y1 = win32gui.ClientToScreen(hwnd, (x1 - x, y1 - y))
+                self.bounds = (x, y, x1, y1)
+                img = pyautogui.screenshot(region=self.bounds)
+                return img
+            else:
+                print('Window not found!')
+        else:
+            img = pyautogui.screenshot()
+            return img
 
     def write_mouse_action(self, engine="pyautogui", move="", parameters=""):
         """Append a new mouse move to capture.
@@ -182,6 +178,7 @@ class RecordCtrl:
         move -- the mouse movement (mouseDown, mouseUp, scroll, moveTo)
         parameters -- the details of the movement
         """
+
         def isinteger(s):
             try:
                 int(s)
@@ -192,12 +189,12 @@ class RecordCtrl:
         if move == "moveTo":
             coordinates = [int(s)
                            for s in parameters.split(", ") if isinteger(s)]
-            if abs(coordinates[0] - self._lastx) < self.mouse_sensibility \
-               and abs(coordinates[1] - self._lasty) < self.mouse_sensibility:
+            if abs(coordinates[0] - self._lastx) < self.mouse_sensitivity \
+                    and abs(coordinates[1] - self._lasty) < self.mouse_sensitivity:
                 return
             else:
                 self._lastx, self._lasty = coordinates
-        self._capture.append(engine + "." + move + '(' + parameters + ')')
+        self._capture.append(f'{time.time()} | {move} | {parameters}')
 
     def write_keyboard_action(self, engine="pyautogui", move="", key=""):
         """Append keyboard actions to the class variable capture.
@@ -207,23 +204,16 @@ class RecordCtrl:
         - move: keyDown | keyUp
         - key: The key pressed
         """
-        suffix = "(" + repr(key) + ")"
         if move == "keyDown":
             # Corner case: Multiple successive keyDown
-            if move + suffix in self._capture[-1]:
-                move = 'press'
-                self._capture[-1] = engine + "." + move + suffix
-        self._capture.append(engine + "." + move + suffix)
+            if f'{move} | {key}' in self._capture[-1] or f'keyHold | {key}' in self._capture[-1]:
+                move = 'keyHold'
+        self._capture.append(f'{time.time()} | {move} | {key}')
 
     def on_move(self, x, y):
         """Triggered by a mouse move."""
         if not self.recording:
             return False
-        b = time.perf_counter()
-        timeout = float(b - self.last_time)
-        if timeout > 0.0:
-            self._capture.append(f"time.sleep({timeout})")
-        self.last_time = b
         self.write_mouse_action(move="moveTo", parameters=f"{x}, {y}")
 
     def on_click(self, x, y, button, pressed):
@@ -264,11 +254,6 @@ class RecordCtrl:
     def on_press(self, key):
         """Triggered by a key press."""
         b = time.perf_counter()
-        timeout = float(b - self.last_time)
-        if timeout > 0.0:
-            self._capture.append(f"time.sleep({timeout})")
-        self.last_time = b
-
         try:
             # Ignore presses on Fn key
             if key.char:
@@ -284,48 +269,16 @@ class RecordCtrl:
         if not self.recording:
             return False
         else:
-            if len(str(key)) <= 3:
-                self.write_keyboard_action(move='keyUp', key=key)
-            else:
+            try:
+                self.write_keyboard_action(move='keyUp', key=key.char)
+            except AttributeError:
                 self.write_keyboard_action(move="keyUp",
                                            key=LOOKUP_SPECIAL_KEY.get(key,
                                                                       self._error))
 
-    def recording_timer(event):
-        """Set the recording timer."""
-        # Workaround for user upgrading from a previous version
-        try:
-            current_value = settings.CONFIG.getint(
-                'DEFAULT', 'Recording Timer')
-        except:
-            current_value = 0
-
-        dialog = wx.NumberEntryDialog(None, message="Choose an amount of time (seconds)",
-                                      prompt="", caption="Recording Timer", value=current_value, min=0, max=999)
-        dialog.ShowModal()
-        new_value = dialog.Value
-        dialog.Destroy()
-        settings.CONFIG['DEFAULT']['Recording Timer'] = str(new_value)
-
-    def mouse_speed(event):
-        """Set the mouse speed."""
-        # Workaround for user upgrading from a previous version
-        try:
-            current_value = settings.CONFIG.getint(
-                'DEFAULT', 'Mouse Speed')
-        except:
-            current_value = 21
-
-        dialog = wx.NumberEntryDialog(None, message="Choose an amount of time (seconds)",
-                                      prompt="", caption="Recording Timer", value=current_value, min=0, max=9999)
-        dialog.ShowModal()
-        new_value = dialog.Value
-        dialog.Destroy()
-        settings.CONFIG['DEFAULT']['Mouse Speed'] = str(new_value)
-
     def action(self, event):
         """Triggered when the recording button is clicked on the GUI."""
-        self.mouse_sensibility = settings.CONFIG.getint("DEFAULT", "Mouse Speed")
+        self.mouse_sensitivity = settings.CONFIG.getint("DEFAULT", "Mouse Speed", fallback=20)
         listener_mouse = mouse.Listener(
             on_move=self.on_move,
             on_click=self.on_click,
@@ -334,10 +287,8 @@ class RecordCtrl:
             on_press=self.on_press,
             on_release=self.on_release)
 
-        try:
-            self.timer = settings.CONFIG.getint("DEFAULT", "Recording Timer")
-        except:
-            self.timer = 0
+        self.timer = settings.CONFIG.getint("DEFAULT", "Recording Timer", fallback=0)
+        self.window_title = settings.CONFIG.get("DEFAULT", "Window Title")
 
         if event.EventObject.Value:
             if self.timer > 0:
@@ -357,6 +308,9 @@ class RecordCtrl:
             self.recording = True
             recording_state = wx.Icon(os.path.join(
                 self.path, "img", "icon-recording.png"))
+            self.screenshot(self.window_title, recompute_bounds=True)
+            while self.recording:
+                self._images.append([time.time(), self.screenshot(self.window_title)])
         else:
             self.recording = False
             with open(TMP_PATH, 'w') as f:
@@ -365,6 +319,9 @@ class RecordCtrl:
                 self._capture.pop()
                 f.seek(0)
                 f.write("\n".join(self._capture))
+                f.truncate()
+            with open(TMP_IMG_PATH, 'w') as f:
+                f.write("\n".join(self._images))
                 f.truncate()
             self._capture = [self._header]
             recording_state = wx.Icon(
@@ -444,38 +401,6 @@ class PlayCtrl:
             settings.save_config()
 
 
-class CompileCtrl:
-    """Produce an executable Python bytecode file."""
-
-    @staticmethod
-    def compile(event):
-        """Return a compiled version of the capture currently loaded.
-
-        For now it only returns a bytecode file.
-        #TODO: Return a proper executable for the platform currently
-        used **Without breaking the current workflow** which works both
-        in development mode and in production
-        """
-        try:
-            bytecode_path = py_compile.compile(TMP_PATH)
-        except:
-            wx.LogError("No capture loaded")
-            return
-        default_file = "capture.pyc"
-        event.EventObject.Parent.panel.SetFocus()
-        with wx.FileDialog(parent=event.GetEventObject().Parent, message="Save capture executable",
-                           defaultDir=os.path.expanduser("~"), defaultFile=default_file, wildcard="*",
-                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as fileDialog:
-
-            if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return     # the user changed their mind
-            pathname = fileDialog.GetPath()
-            try:
-                shutil.copy(bytecode_path, pathname)
-            except IOError:
-                wx.LogError(f"Cannot save current data in file {pathname}.")
-
-
 class SettingsCtrl:
     """Control class for the settings."""
 
@@ -513,7 +438,7 @@ class SettingsCtrl:
         """Set the recording hotkey."""
         current_value = settings.CONFIG.getint('DEFAULT', 'Recording Hotkey')
         dialog = SliderDialog(None, title="Choose a function key: F2-12", size=(500, 50),
-                              default_value=current_value-339, min_value=2, max_value=12)
+                              default_value=current_value - 339, min_value=2, max_value=12)
         dialog.ShowModal()
         new_value = dialog.value + 339
         if new_value == settings.CONFIG.getint('DEFAULT', 'Playback Hotkey'):
@@ -529,7 +454,7 @@ class SettingsCtrl:
         """Set the playback hotkey."""
         current_value = settings.CONFIG.getint('DEFAULT', 'Playback Hotkey')
         dialog = SliderDialog(None, title="Choose a function key: F2-12", size=(500, 50),
-                              default_value=current_value-339, min_value=2, max_value=12)
+                              default_value=current_value - 339, min_value=2, max_value=12)
         dialog.ShowModal()
         new_value = dialog.value + 339
         if new_value == settings.CONFIG.getint('DEFAULT', 'Recording Hotkey'):
@@ -557,16 +482,6 @@ class SettingsCtrl:
                                   message="Restart the program to apply modifications",
                                   pos=wx.DefaultPosition)
         dialog.ShowModal()
-
-
-class HelpCtrl:
-    """Control class for the About menu."""
-
-    @staticmethod
-    def action(event):
-        """Open the browser on the quick demo of atbswp"""
-        url = "https://youtu.be/L0jjSgX5FYk"
-        wx.LaunchDefaultBrowser(url, flags=0)
 
 
 class PlayThread(Thread):
