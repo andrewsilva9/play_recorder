@@ -17,7 +17,7 @@
 
 """
 This module contains all the classes needed to
-create the GUI and handle non functionnal event
+create the GUI and handle non functional event
 """
 
 import os

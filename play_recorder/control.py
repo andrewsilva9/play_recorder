@@ -302,11 +302,6 @@ class RecordCtrl:
                 os.path.join(self.path, "img", "icon.png"))
         event.GetEventObject().GetParent().taskbar.SetIcon(recording_state)
 
-    def save_images(self):
-        with open(TMP_IMG_PATH, 'w') as f:
-            f.write("\n".join(self._images))
-            f.truncate()
-
     def update_timer(self, event):
         """Check if it's the time to start to record"""
         if self.timer <= 0 or self.countdown_dialog.WasSkipped():
