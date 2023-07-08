@@ -23,13 +23,52 @@ create the GUI and handle non functionnal event
 import os
 import sys
 from pathlib import Path
-
+import pygetwindow
 import control
 
 import settings
 
 import wx
 import wx.adv
+
+
+def recording_timer():
+    """Set the recording timer."""
+    current_value = settings.CONFIG.getint('DEFAULT', 'Recording Timer', fallback=0)
+
+    dialog = wx.NumberEntryDialog(None, message="How many seconds should we wait before beginning recording?",
+                                  prompt="", caption="Recording Timer", value=current_value, min=0, max=999)
+    dialog.ShowModal()
+    new_value = dialog.Value
+    dialog.Destroy()
+    settings.CONFIG['DEFAULT']['Recording Timer'] = str(new_value)
+
+
+def mouse_speed():
+    """Set the mouse speed."""
+    current_value = settings.CONFIG.getint('DEFAULT', 'Mouse Speed', fallback=21)
+
+    dialog = wx.NumberEntryDialog(None, message="How many pixels have to be crossed before recording mouse "
+                                                "movement?",
+                                  prompt="", caption="Mouse Sensitivity", value=current_value, min=0, max=9999)
+    dialog.ShowModal()
+    new_value = dialog.Value
+    dialog.Destroy()
+    settings.CONFIG['DEFAULT']['Mouse Speed'] = str(new_value)
+
+
+def window_title(input_data):
+    """Set the window title."""
+    # Workaround for user upgrading from a previous version
+    print(f'input data: {input_data}')
+    available_windows = pygetwindow.getAllTitles()
+    current_value = settings.CONFIG.get('DEFAULT', 'Window Title', fallback='Heroes of the Storm')
+    dialog = wx.TextEntryDialog(None, message="What is the name of the window you want to record?",
+                                value=f'Options: {",".join(available_windows)}')
+    dialog.ShowModal()
+    new_value = dialog.Value
+    dialog.Destroy()
+    settings.CONFIG['DEFAULT']['Window Title'] = str(new_value)
 
 
 class MainDialog(wx.Dialog, wx.MiniFrame):
@@ -113,14 +152,15 @@ class MainDialog(wx.Dialog, wx.MiniFrame):
                   menu.Append(wx.ID_ABOUT, self.settings_text[7]))
 
         # Recording Timer
-        self.Bind(wx.EVT_MENU,
-                  control.RecordCtrl.recording_timer,
+        self.Bind(wx.EVT_MENU, recording_timer,
                   menu.Append(wx.ID_ANY, self.settings_text[8]))
 
         # Mouse speed
-        self.Bind(wx.EVT_MENU,
-                  control.RecordCtrl.mouse_speed,
+        self.Bind(wx.EVT_MENU, mouse_speed,
                   menu.Append(wx.ID_ANY, self.settings_text[9]))
+
+        self.Bind(wx.EVT_MENU, window_title,
+                  menu.Append(wx.ID_ANY, 'Window Title for Screenshots'))
         return menu
 
     def __init__(self, *args, **kwds):

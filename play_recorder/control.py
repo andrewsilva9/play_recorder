@@ -27,7 +27,9 @@ from threading import Thread
 from datetime import date
 import pyautogui
 import win32gui
-
+import mss
+import numpy as np
+import cv2
 from pynput import keyboard, mouse
 
 import settings
@@ -42,6 +44,8 @@ TMP_PATH = os.path.join(tempfile.gettempdir(),
                         "recorder-" + date.today().strftime("%Y%m%d"))
 TMP_IMG_PATH = os.path.join(tempfile.gettempdir(),
                             "recorder-screenshots" + date.today().strftime("%Y%m%d"))
+
+RECORD_FPS = 24
 # HEADER = (
 #     f"#!/bin/env python3\n"
 #     f"# Created by atbswp v{settings.VERSION} "
@@ -149,10 +153,19 @@ class RecordCtrl:
             self.path = Path(__file__).parent.absolute()
         self.bounds = (0, 0, 100, 100)
         self.window_title = ''
+        self.sct = mss.mss()
 
-    def screenshot(self, window_title=None, recompute_bounds=False):
+    def screenshot(self, window_title):
+        if time.time()-self.screenshot_time >= 1/RECORD_FPS:
+            self._images.append([time.time(), self.take_screenshot(self.window_title)])
+            self.screenshot_time = time.time()
+
+    def take_screenshot(self, window_title=None, recompute_bounds=False):
+        # TODO: Getting threading errors from how I'm using sct -- to convert to multithreading soon maybe.
         if not recompute_bounds:
-            return pyautogui.screenshot(region=self.bounds)
+            img = np.asarray(self.sct.grab(self.bounds))
+            img = cv2.resize(img, (256, 144))
+            return img
 
         if window_title:
             hwnd = win32gui.FindWindow(None, window_title)
@@ -162,7 +175,13 @@ class RecordCtrl:
                 x, y = win32gui.ClientToScreen(hwnd, (x, y))
                 x1, y1 = win32gui.ClientToScreen(hwnd, (x1 - x, y1 - y))
                 self.bounds = (x, y, x1, y1)
-                img = pyautogui.screenshot(region=self.bounds)
+                self.bounds = {'top': y, 'left': x, 'width': (x1-x), 'height': (y1-y)}
+                print(self.bounds)
+                # img = pyautogui.screenshot(region=self.bounds)
+                img = np.asarray(self.sct.grab(self.bounds))
+                img = cv2.resize(img, (256, 144))
+                cv2.imshow('test', img)
+                # img = img.resize(size=(256, 144))
                 return img
             else:
                 print('Window not found!')
@@ -183,7 +202,7 @@ class RecordCtrl:
             try:
                 int(s)
                 return True
-            except:
+            except ValueError:
                 return False
 
         if move == "moveTo":
@@ -195,6 +214,7 @@ class RecordCtrl:
             else:
                 self._lastx, self._lasty = coordinates
         self._capture.append(f'{time.time()} | {move} | {parameters}')
+        self.screenshot(self.window_title)
 
     def write_keyboard_action(self, engine="pyautogui", move="", key=""):
         """Append keyboard actions to the class variable capture.
@@ -209,6 +229,7 @@ class RecordCtrl:
             if f'{move} | {key}' in self._capture[-1] or f'keyHold | {key}' in self._capture[-1]:
                 move = 'keyHold'
         self._capture.append(f'{time.time()} | {move} | {key}')
+        self.screenshot(self.window_title)
 
     def on_move(self, x, y):
         """Triggered by a mouse move."""
@@ -308,9 +329,8 @@ class RecordCtrl:
             self.recording = True
             recording_state = wx.Icon(os.path.join(
                 self.path, "img", "icon-recording.png"))
-            self.screenshot(self.window_title, recompute_bounds=True)
-            while self.recording:
-                self._images.append([time.time(), self.screenshot(self.window_title)])
+            self.take_screenshot(self.window_title, recompute_bounds=True)
+            self.screenshot_time = time.time()
         else:
             self.recording = False
             with open(TMP_PATH, 'w') as f:
