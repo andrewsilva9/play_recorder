@@ -16,24 +16,25 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import os
 import shutil
 import sys
 import tempfile
 import time
+
 from pathlib import Path
 from threading import Event
 from threading import Thread
+from multiprocessing import Queue
 from datetime import date
+
 import pyautogui
-import win32gui
-import mss
-import numpy as np
-import cv2
 from pynput import keyboard, mouse
 
-import settings
 
+import settings
+from screen_recording import screen_save, screen_record
 from custom_widgets import SliderDialog
 
 import wx
@@ -46,15 +47,7 @@ TMP_IMG_PATH = os.path.join(tempfile.gettempdir(),
                             "recorder-screenshots" + date.today().strftime("%Y%m%d"))
 
 RECORD_FPS = 24
-# HEADER = (
-#     f"#!/bin/env python3\n"
-#     f"# Created by atbswp v{settings.VERSION} "
-#     f"(https://git.sr.ht/~rmpr/atbswp)\n"
-#     f"# on {date.today().strftime('%d %b %Y ')}\n"
-#     f"import pyautogui\n"
-#     f"import time\n"
-#     f"pyautogui.FAILSAFE = False\n"
-# )
+
 HEADER = (
     f"Recorded on {date.today()}"
 )
@@ -151,43 +144,7 @@ class RecordCtrl:
             self.path = sys._MEIPASS
         else:
             self.path = Path(__file__).parent.absolute()
-        self.bounds = (0, 0, 100, 100)
         self.window_title = ''
-        self.sct = mss.mss()
-
-    def screenshot(self, window_title):
-        if time.time()-self.screenshot_time >= 1/RECORD_FPS:
-            self._images.append([time.time(), self.take_screenshot(self.window_title)])
-            self.screenshot_time = time.time()
-
-    def take_screenshot(self, window_title=None, recompute_bounds=False):
-        # TODO: Getting threading errors from how I'm using sct -- to convert to multithreading soon maybe.
-        if not recompute_bounds:
-            img = np.asarray(self.sct.grab(self.bounds))
-            img = cv2.resize(img, (256, 144))
-            return img
-
-        if window_title:
-            hwnd = win32gui.FindWindow(None, window_title)
-            if hwnd:
-                win32gui.SetForegroundWindow(hwnd)
-                x, y, x1, y1 = win32gui.GetClientRect(hwnd)
-                x, y = win32gui.ClientToScreen(hwnd, (x, y))
-                x1, y1 = win32gui.ClientToScreen(hwnd, (x1 - x, y1 - y))
-                self.bounds = (x, y, x1, y1)
-                self.bounds = {'top': y, 'left': x, 'width': (x1-x), 'height': (y1-y)}
-                print(self.bounds)
-                # img = pyautogui.screenshot(region=self.bounds)
-                img = np.asarray(self.sct.grab(self.bounds))
-                img = cv2.resize(img, (256, 144))
-                cv2.imshow('test', img)
-                # img = img.resize(size=(256, 144))
-                return img
-            else:
-                print('Window not found!')
-        else:
-            img = pyautogui.screenshot()
-            return img
 
     def write_mouse_action(self, engine="pyautogui", move="", parameters=""):
         """Append a new mouse move to capture.
@@ -214,7 +171,6 @@ class RecordCtrl:
             else:
                 self._lastx, self._lasty = coordinates
         self._capture.append(f'{time.time()} | {move} | {parameters}')
-        self.screenshot(self.window_title)
 
     def write_keyboard_action(self, engine="pyautogui", move="", key=""):
         """Append keyboard actions to the class variable capture.
@@ -229,7 +185,6 @@ class RecordCtrl:
             if f'{move} | {key}' in self._capture[-1] or f'keyHold | {key}' in self._capture[-1]:
                 move = 'keyHold'
         self._capture.append(f'{time.time()} | {move} | {key}')
-        self.screenshot(self.window_title)
 
     def on_move(self, x, y):
         """Triggered by a mouse move."""
@@ -329,8 +284,10 @@ class RecordCtrl:
             self.recording = True
             recording_state = wx.Icon(os.path.join(
                 self.path, "img", "icon-recording.png"))
-            self.take_screenshot(self.window_title, recompute_bounds=True)
-            self.screenshot_time = time.time()
+            # Process(target=screen_record, args=(self, self.window_title,)).start()
+            queue = Queue()
+            Thread(target=screen_record, args=(self, self.window_title, queue, )).start()
+            Thread(target=screen_save, args=(queue, )).start()
         else:
             self.recording = False
             with open(TMP_PATH, 'w') as f:
@@ -340,13 +297,15 @@ class RecordCtrl:
                 f.seek(0)
                 f.write("\n".join(self._capture))
                 f.truncate()
-            with open(TMP_IMG_PATH, 'w') as f:
-                f.write("\n".join(self._images))
-                f.truncate()
             self._capture = [self._header]
             recording_state = wx.Icon(
                 os.path.join(self.path, "img", "icon.png"))
         event.GetEventObject().GetParent().taskbar.SetIcon(recording_state)
+
+    def save_images(self):
+        with open(TMP_IMG_PATH, 'w') as f:
+            f.write("\n".join(self._images))
+            f.truncate()
 
     def update_timer(self, event):
         """Check if it's the time to start to record"""
