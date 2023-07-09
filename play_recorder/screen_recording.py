@@ -4,7 +4,7 @@ import win32gui
 import mss
 import time
 import numpy as np
-
+import cv2
 
 # def set_pixel(img, w, x, y, rgb=(0, 0, 0)):
 #     # From https://github.com/BoboTiG/python-mss/issues/55
@@ -65,7 +65,9 @@ def add_mouse(img, boundaries):
 #
 #
 
-def screen_record(recording_object, window_title, queue):
+def screen_record(recording_object, window_title):
+    fourcc = cv2.VideoWriter_fourcc(*"XVID")
+    times = []
     print(f'In recording with window {window_title}')
     with mss.mss(with_cursor=True) as sct:
         hwnd = win32gui.FindWindow(None, window_title)
@@ -76,19 +78,36 @@ def screen_record(recording_object, window_title, queue):
             x, y = win32gui.ClientToScreen(hwnd, (x_b, y_b))
             bounds = {'top': y, 'left': x, 'width': width, 'height': height}
             print(f'Found bounds at {bounds}')
+            out = cv2.VideoWriter("screenshots/output.avi", fourcc, 10, (512, 288))
+            last_frame = time.time()
             while recording_object.recording:
-                img = np.asarray(sct.grab(bounds))[:, :, [2, 1, 0]]
-                # img = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX").resize((512, 288))
+                # if time.time() - last_frame < 1/24:
+                #     continue
+                img = np.asarray(sct.grab(bounds))[:, :, [0, 1, 2]]
+                last_frame = time.time()
                 img_with_mouse = add_mouse(img, bounds)
-                img_with_mouse = Image.fromarray(img_with_mouse).resize((512, 288))
-                queue.put(img_with_mouse)
-            queue.put(None)
+                img_with_mouse = cv2.resize(img_with_mouse, (512, 288))
+                # img_with_mouse = cv2.putText(img_with_mouse,
+                #                              str(last_frame),
+                #                              (20, 20),
+                #                              cv2.FONT_HERSHEY_PLAIN,
+                #                              fontScale=2,
+                #                              color=(255, 255, 255))
+                out.write(img_with_mouse)
+                times.append(f'{last_frame},')
+
+            out.release()
+            with open('screenshots/timestamps.txt', 'w') as f:
+                f.writelines(times)
+
         else:
             print('Window not found!')
 
 
 def screen_save(queue):
     output = "screenshots/{}.jpg"
+    fourcc = cv2.VideoWriter_fourcc(*"XVID")
+    out = cv2.VideoWriter("output.avi", fourcc, 24, tuple(w.size))
     while True:
         img = queue.get()
         if img is None:
@@ -96,3 +115,39 @@ def screen_save(queue):
             return None
         img.save(output.format(time.time()))
 
+
+if __name__ == "__main__":
+    # Debug file saving
+    import os
+    pathname = 'C:\\Users\\asilv\\Documents\\Projects\\play_recorder\\play_recorder\\jaina_video_capture.txt'
+    if '.' in pathname:
+        pathname = pathname.split('.')[0]
+    os.rename('screenshots/output.avi', f'{pathname}_video.avi')
+    os.rename('screenshots/timestamps.txt', f'{pathname}_video_timestamps.txt')
+    # Debug timestamp collection
+    timestamps = []
+    with open('./screenshots/timestamps.txt', 'r') as f:
+        timestamps = f.readlines()[0]
+    timestamps = [float(x) for x in timestamps.split(',') if len(x)>0]
+    cap = cv2.VideoCapture('./screenshots/output.avi')
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    video_timestamps = [cap.get(cv2.CAP_PROP_POS_MSEC)]
+    calc_timestamps = []
+    while (cap.isOpened()):
+        frame_exists, curr_frame = cap.read()
+        next_t = timestamps[len(calc_timestamps)]
+        if frame_exists:
+            video_timestamps.append(cap.get(cv2.CAP_PROP_POS_MSEC))
+            t_diff = 0
+            if len(calc_timestamps) > 0:
+                t_diff = next_t - last_t
+            calc_timestamps.append(t_diff)
+            last_t = next_t
+            cv2.imshow('scren', curr_frame)
+            cv2.waitKey(0)
+
+# img = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX").resize((512, 288))
+# img_with_mouse = Image.fromarray(img_with_mouse).resize((512, 288))
+# image_buffer.append([last_frame, img_with_mouse])
+# queue.put(img_with_mouse)
+# queue.put(None)

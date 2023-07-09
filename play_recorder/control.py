@@ -120,6 +120,10 @@ class FileChooserCtrl:
             pathname = fileDialog.GetPath()
             try:
                 shutil.copy(TMP_PATH, pathname)
+                if '.' in pathname:
+                    pathname = pathname.split('.')[0]
+                os.rename('screenshots/output.avi', f'{pathname}_video.avi')
+                os.rename('screenshots/timestamps.txt', f'{pathname}_video_timestamps.avi')
             except IOError:
                 wx.LogError(f"Cannot save current data in file {pathname}.")
 
@@ -285,9 +289,9 @@ class RecordCtrl:
             recording_state = wx.Icon(os.path.join(
                 self.path, "img", "icon-recording.png"))
             # Process(target=screen_record, args=(self, self.window_title,)).start()
-            queue = Queue()
-            Thread(target=screen_record, args=(self, self.window_title, queue, )).start()
-            Thread(target=screen_save, args=(queue, )).start()
+            # queue = Queue()
+            Thread(target=screen_record, args=(self, self.window_title, )).start()
+            # Thread(target=screen_save, args=(queue, )).start()
         else:
             self.recording = False
             with open(TMP_PATH, 'w') as f:
