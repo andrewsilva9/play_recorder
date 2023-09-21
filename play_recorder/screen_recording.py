@@ -16,6 +16,42 @@ import cv2
 #     img[pos:pos + 3] = rgb
 #     return img
 
+template = cv2.imread('../../imitation_rl_games/individual_explorations/test_images/cursor2.png', cv2.IMREAD_UNCHANGED)
+w = template.shape[1]
+h = template.shape[0]
+# # resized = template[::4, ::4]
+# width = int(w * 25 / 100)
+# height = int(h * 25 / 100)
+# dim = (width, height)
+# resized = cv2.resize(template, dim, interpolation=cv2.INTER_AREA)
+if template.shape[2] < 4:
+        template = np.concatenate(
+            [
+                template,
+                np.ones((template.shape[0], template.shape[1], 1), dtype = template.dtype) * 255
+            ],
+            axis = 2,
+        )
+overlay_image = template[..., :3]
+mask = template[..., 3:] / 255.0
+mask[overlay_image[:, :, 2] < 100] = 0
+
+
+def transparent_cursor(img, boundaries):
+    flags, hcursor, (cx, cy) = win32gui.GetCursorInfo()
+    # cursor = get_cursor(hcursor)
+    cx = cx - boundaries['left']
+    cy = cy - boundaries['top']
+    if cx > 0 and cy > 0:
+        try:
+            img[cy:cy + h, cx:cx + w] = (1.0 - mask) * img[cy:cy + h, cx:cx + w] + mask * overlay_image
+            return img
+        except ValueError as e:
+            print(e)
+            return img
+    return img
+
+
 
 def add_mouse(img, boundaries):
     # From https://github.com/BoboTiG/python-mss/issues/55
@@ -78,15 +114,18 @@ def screen_record(recording_object, window_title):
             x, y = win32gui.ClientToScreen(hwnd, (x_b, y_b))
             bounds = {'top': y, 'left': x, 'width': width, 'height': height}
             print(f'Found bounds at {bounds}')
-            out = cv2.VideoWriter("screenshots/output.avi", fourcc, 10, (512, 288))
+            out = cv2.VideoWriter("screenshots/output.avi", fourcc, 10, (854, 480))  # (512, 288))
             last_frame = time.time()
             while recording_object.recording:
                 # if time.time() - last_frame < 1/24:
                 #     continue
                 img = np.asarray(sct.grab(bounds))[:, :, [0, 1, 2]]
                 last_frame = time.time()
-                img_with_mouse = add_mouse(img, bounds)
-                img_with_mouse = cv2.resize(img_with_mouse, (512, 288))
+                # img_with_mouse = add_mouse(img, bounds)
+
+                img_with_mouse = transparent_cursor(img, bounds)
+                img_with_mouse = cv2.resize(img_with_mouse, (854, 480))  # (512, 288))
+
                 # img_with_mouse = cv2.putText(img_with_mouse,
                 #                              str(last_frame),
                 #                              (20, 20),

@@ -123,7 +123,7 @@ class FileChooserCtrl:
                 if '.' in pathname:
                     pathname = pathname.split('.')[0]
                 os.rename('screenshots/output.avi', f'{pathname}_video.avi')
-                os.rename('screenshots/timestamps.txt', f'{pathname}_video_timestamps.avi')
+                os.rename('screenshots/timestamps.txt', f'{pathname}_video_timestamps.txt')
             except IOError:
                 wx.LogError(f"Cannot save current data in file {pathname}.")
 
